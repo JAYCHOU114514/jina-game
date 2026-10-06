@@ -52,6 +52,7 @@
       </div>
       <button id="ovBtn" class="primary" type="button">开始游戏</button>
       <button id="ovRevive" class="ghost" type="button" hidden>用掉重来机会（消除最后两次）</button>
+      <button id="ovShare" class="ghost" type="button" hidden>生成成绩图</button>
       <p class="hint">鼠标移动瞄准、点击投放<br>触屏拖动瞄准、松手投放<br>空格投放 · R 重开</p>
     </div>
   </div>
@@ -69,6 +70,18 @@
         <button id="codeBtn" type="button">确定</button>
       </div>
       <p class="hint" id="codeMsg"></p>
+    </div>
+  </div>
+
+  <!-- 成绩分享图 -->
+  <div id="shareModal">
+    <div class="panel">
+      <h2>成绩图</h2>
+      <div class="shareWrap"><img id="shareImg" alt="成绩图"></div>
+      <p class="hint err" id="shareErr" hidden></p>
+      <p class="hint">手机上<strong>长按图片</strong>保存到相册<br>电脑上右键另存为</p>
+      <a id="shareDl" class="primary" download="合成大基娜-成绩.png">下载图片</a>
+      <button id="shareClose" class="ghost" type="button">关闭</button>
     </div>
   </div>
 

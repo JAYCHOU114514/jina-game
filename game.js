@@ -346,6 +346,12 @@
     winLevel: LEVELS,
     // 口令道具：剩余「同级合并」次数
     items: 0,
+    // 打击感：飘分 / 冲击波 / 震屏
+    floaters: [],
+    ripples: [],
+    shake: 0,
+    // 本局达到过的最高等级（用于结算分享图）
+    maxLevel: 1,
   };
 
   function makeBall(level, x, y) {
@@ -382,6 +388,10 @@
     state.reviveUsed = false;
     state.winLevel = dropProfile.winLevel;
     state.items = dropProfile.items; // 每局重新补满道具
+    state.floaters.length = 0;
+    state.ripples.length = 0;
+    state.shake = 0;
+    state.maxLevel = 1;
     syncHud();
     syncItemBtn();
   }
@@ -674,6 +684,13 @@
     const mult = 1 + Math.min(state.chain - 1, 4) * 0.5;
     const gain = Math.round(base * mult);
     state.score += gain;
+    if (level > state.maxLevel) state.maxLevel = level;
+
+    // 打击感：飘分 + 冲击波 + 震屏 + 震动反馈
+    spawnFloater(x, y, gain, level);
+    spawnRipple(x, y, level);
+    addShake(1.6 + level * 0.55);
+    buzz(Math.min(40, 8 + level * 2.5));
 
     spawnParticles(x, y, level);
     Sfx.merge(level);
@@ -711,6 +728,69 @@
       p.y += p.vy * dt;
       p.life -= p.decay * dt;
       if (p.life <= 0) ps.splice(i, 1);
+    }
+  }
+
+  /* ==================== 打击感 ==================== */
+
+  // 飘分：合成位置冒一个 +N 往上飘
+  function spawnFloater(x, y, gain, level) {
+    state.floaters.push({
+      x,
+      y,
+      text: '+' + gain,
+      life: 1,
+      vy: -52 - level * 2,
+      size: 22 + Math.min(level, 10) * 1.6,
+      color: level >= 9 ? '#e8a317' : '#2f9e6b',
+    });
+  }
+
+  // 冲击波：合成点扩散一圈，等级越高越明显
+  function spawnRipple(x, y, level) {
+    state.ripples.push({
+      x, y,
+      r: RADII[Math.min(level - 1, LEVELS - 1)] * 0.6,
+      grow: 90 + level * 16,
+      life: 1,
+      decay: 2.6,
+      w: 2 + level * 0.35,
+      color: RING[Math.min(level - 1, LEVELS - 1)],
+    });
+  }
+
+  // 震屏：合出高级球时抖一下
+  function addShake(power) {
+    state.shake = Math.min(14, state.shake + power);
+  }
+
+  function stepEffects(dt) {
+    const fs = state.floaters;
+    for (let i = fs.length - 1; i >= 0; i--) {
+      const f = fs[i];
+      f.y += f.vy * dt;
+      f.vy *= 0.94;
+      f.life -= dt / 0.95;
+      if (f.life <= 0) fs.splice(i, 1);
+    }
+    const rs = state.ripples;
+    for (let i = rs.length - 1; i >= 0; i--) {
+      const r = rs[i];
+      r.r += r.grow * dt;
+      r.life -= r.decay * dt;
+      if (r.life <= 0) rs.splice(i, 1);
+    }
+    // 震屏衰减
+    if (state.shake > 0.05) state.shake *= Math.exp(-9 * dt);
+    else state.shake = 0;
+  }
+
+  // 手机震动反馈（安卓支持，iOS 不支持，加了不亏）
+  function buzz(ms) {
+    try {
+      if (navigator.vibrate) navigator.vibrate(ms);
+    } catch (e) {
+      /* 忽略 */
     }
   }
 
@@ -757,6 +837,7 @@
 
   function victory(ax, ay, bx, by) {
     state.phase = 'win';
+    state.maxLevel = LEVELS;
     saveBest();
     Sfx.win();
     const mx = (ax + bx) / 2;
@@ -766,6 +847,134 @@
     }
     syncHud();
     showOverlay('恭喜通关！', '再来一局', false, true, false);
+  }
+
+  /* ==================== 结算分享图 ==================== */
+
+  // 画在离屏 canvas 上，返回 dataURL。手机上长按即可保存。
+  function buildShareImage() {
+    const W = 640;
+    const H = 900;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const g = c.getContext('2d');
+    const FONT = '-apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif';
+    const won = state.phase === 'win';
+
+    const rr = (x, y, w, h, r) => {
+      g.beginPath();
+      g.moveTo(x + r, y);
+      g.arcTo(x + w, y, x + w, y + h, r);
+      g.arcTo(x + w, y + h, x, y + h, r);
+      g.arcTo(x, y + h, x, y, r);
+      g.arcTo(x, y, x + w, y, r);
+      g.closePath();
+    };
+
+    // 背景
+    const bg = g.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#fff4f9');
+    bg.addColorStop(1, '#ffd9e8');
+    g.fillStyle = bg;
+    g.fillRect(0, 0, W, H);
+
+    // 卡片
+    rr(40, 56, W - 80, H - 112, 34);
+    g.fillStyle = '#fffafc';
+    g.shadowColor = 'rgba(200,120,150,0.22)';
+    g.shadowBlur = 28;
+    g.shadowOffsetY = 10;
+    g.fill();
+    g.shadowColor = 'transparent';
+    g.shadowBlur = 0;
+    g.shadowOffsetY = 0;
+
+    g.textAlign = 'center';
+
+    // 标题
+    g.fillStyle = '#f2789f';
+    g.font = `800 46px ${FONT}`;
+    g.fillText('合成大基娜', W / 2, 150);
+
+    // 结果（不用 emoji：部分环境会渲染成方块）
+    g.fillStyle = won ? '#e8a317' : '#9b7c86';
+    g.font = `700 28px ${FONT}`;
+    g.fillText(won ? '恭喜通关！' : '游戏结束', W / 2, 200);
+
+    // 最高等级的球
+    const img = sprites[Math.min(state.maxLevel, LEVELS) - 1];
+    const R = 96;
+    const cy = 340;
+    if (img) {
+      g.save();
+      g.beginPath();
+      g.arc(W / 2, cy, R, 0, Math.PI * 2);
+      g.clip();
+      g.drawImage(img, W / 2 - R, cy - R, R * 2, R * 2);
+      g.restore();
+    }
+    g.fillStyle = '#9b7c86';
+    g.font = `600 24px ${FONT}`;
+    g.fillText(`最高合到第 ${state.maxLevel} 级`, W / 2, cy + R + 44);
+
+    // 得分
+    g.fillStyle = '#5b3b46';
+    g.font = `600 24px ${FONT}`;
+    g.fillText('本局得分', W / 2, 560);
+
+    g.fillStyle = '#f2789f';
+    g.font = `800 108px ${FONT}`;
+    g.fillText(String(state.score), W / 2, 668);
+
+    // 最高分
+    g.fillStyle = '#9b7c86';
+    g.font = `600 26px ${FONT}`;
+    g.fillText(`最高分 ${state.best}`, W / 2, 726);
+
+    // 分隔线
+    g.strokeStyle = '#ffe0ec';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(110, 780);
+    g.lineTo(W - 110, 780);
+    g.stroke();
+
+    // 底部网址
+    g.fillStyle = '#c5a3b0';
+    g.font = `500 21px ${FONT}`;
+    g.fillText('jaychou114514.github.io/jina-game', W / 2, 820);
+
+    return c.toDataURL('image/png');
+  }
+
+  function openShare() {
+    let url = null;
+    let err = null;
+    try {
+      url = buildShareImage();
+    } catch (e) {
+      // 用 file:// 直接打开时，画布会因图片跨源被标记为"污染"，
+      // toDataURL 会抛 SecurityError。这种情况给个明确提示，别让按钮点了没反应。
+      err = e;
+      console.error('生成成绩图失败', e);
+    }
+    if (!url) {
+      elShareImg.hidden = true;
+      elShareDl.hidden = true;
+      elShareErr.hidden = false;
+      elShareErr.textContent =
+        '生成失败' + (err && err.name === 'SecurityError' ? '：本地文件方式打开无法导出图片，请用网址访问或改用单文件版' : '');
+      elShareModal.classList.add('show');
+      return;
+    }
+    elShareImg.hidden = false;
+    elShareDl.hidden = false;
+    elShareErr.hidden = true;
+    elShareImg.src = url;
+    elShareDl.href = url;
+    elShareDl.download = `合成大基娜-${state.score}分.png`;
+    elShareModal.classList.add('show');
   }
 
   /* ==================== 投放 ==================== */
@@ -840,13 +1049,20 @@
     ctx.translate(ox, oy);
     ctx.scale(scale, scale);
 
+    // 震屏：整体抖一下，幅度由 state.shake 控制并逐帧衰减
+    if (state.shake > 0.05) {
+      ctx.translate(rand(-state.shake, state.shake), rand(-state.shake, state.shake));
+    }
+
     drawField();
     drawAim();
 
     for (let i = 0; i < state.balls.length; i++) drawBall(state.balls[i]);
 
     drawHeld();
+    drawRipples();
     drawParticles();
+    drawFloaters();
 
     ctx.restore();
   }
@@ -981,6 +1197,46 @@
     ctx.restore();
   }
 
+  // 冲击波：合成点扩散的圆环
+  function drawRipples() {
+    const rs = state.ripples;
+    for (let i = 0; i < rs.length; i++) {
+      const r = rs[i];
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, r.life) * 0.75;
+      ctx.strokeStyle = r.color;
+      ctx.lineWidth = r.w * r.life;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // 飘分：+N 往上飘并淡出
+  function drawFloaters() {
+    const fs = state.floaters;
+    if (!fs.length) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < fs.length; i++) {
+      const f = fs[i];
+      const a = Math.min(1, f.life * 1.8); // 最后阶段才淡出
+      ctx.globalAlpha = a;
+      ctx.font = `800 ${f.size}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
+      // 先描白边再填色，叠在花花绿绿的球上也看得清
+      ctx.lineWidth = Math.max(3, f.size * 0.22);
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
   function drawParticles() {
     const ps = state.particles;
     for (let i = 0; i < ps.length; i++) {
@@ -1025,6 +1281,7 @@
     }
 
     stepParticles(dt);
+    stepEffects(dt);
   }
 
   function loop(ts) {
@@ -1058,6 +1315,11 @@
   const elWinHint = document.getElementById('winHint');
   const elItemBtn = document.getElementById('itemBtn');
   const elItemCount = document.getElementById('itemCount');
+  const elShareModal = document.getElementById('shareModal');
+  const elShareImg = document.getElementById('shareImg');
+  const elShareDl = document.getElementById('shareDl');
+  const elOvShare = document.getElementById('ovShare');
+  const elShareErr = document.getElementById('shareErr');
 
   // 道具按钮：只在口令模式下显示，用完变灰
   function syncItemBtn() {
@@ -1099,6 +1361,8 @@
     elOvScore.textContent = state.score;
     elOvBest.textContent = state.best;
     elOvRevive.hidden = !canRevive;
+    // 只有打完一局（结束或通关）才给"生成成绩图"
+    elOvShare.hidden = !(withScore || isWin);
     elOverlay.classList.add('show');
   }
 
@@ -1203,6 +1467,16 @@
     useMergeItem();
   });
 
+  // 成绩分享图
+  elOvShare.addEventListener('click', () => {
+    Sfx.ensure();
+    openShare();
+  });
+  document.getElementById('shareClose').addEventListener('click', () => elShareModal.classList.remove('show'));
+  elShareModal.addEventListener('click', (e) => {
+    if (e.target === elShareModal) elShareModal.classList.remove('show');
+  });
+
   document.getElementById('btnRestart').addEventListener('click', restart);
 
   document.getElementById('btnChart').addEventListener('click', () => {
@@ -1297,6 +1571,8 @@
       setEasyMode, isEasyMode, EASY_CODE, getProfile: () => dropProfile, DROP_PROFILES, pickDropLevel,
       // 口令道具
       useMergeItem, findClosestPair,
+      // 结算分享图
+      buildShareImage, openShare,
       setAim(x) { state.aimX = x; },
       forceLevel(l) { state.heldLevel = l; state.cooldown = 0; },
       dropNow() { drop(); },

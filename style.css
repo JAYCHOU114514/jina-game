@@ -195,7 +195,7 @@ html, body {
 #tools button.off { color: #bb9aa6; }
 
 /* ---------- 遮罩弹层 ---------- */
-#overlay, #chartModal {
+#overlay, #chartModal, #shareModal {
   position: fixed;
   inset: 0;
   display: flex;
@@ -211,7 +211,7 @@ html, body {
   z-index: 20;
 }
 
-#overlay.show, #chartModal.show { opacity: 1; visibility: visible; }
+#overlay.show, #chartModal.show, #shareModal.show { opacity: 1; visibility: visible; }
 
 .panel {
   width: min(340px, 100%);
@@ -312,6 +312,31 @@ button.ghost {
 
 button.ghost:active { transform: scale(0.97); background: #fff6dc; }
 button.ghost[hidden] { display: none; }
+
+/* ---------- 成绩分享图 ---------- */
+.shareWrap {
+  margin: 4px 0 12px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(180, 120, 145, 0.24);
+  background: #fff;
+}
+
+.shareWrap img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* 长按图片在 iOS 上默认会弹系统菜单，这里让它正常触发"存储图像" */
+  -webkit-touch-callout: default;
+  user-select: auto;
+}
+
+a.primary {
+  display: block;
+  box-sizing: border-box;
+  text-align: center;
+  text-decoration: none;
+}
 
 .panel .hint {
   margin: 14px 0 0;
