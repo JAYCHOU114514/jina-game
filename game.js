@@ -1,4 +1,4 @@
-﻿/* 合成大基娜 — 玩法与物理引擎
+/* 合成大基娜 — 玩法与物理引擎
  * 纯原生 JS + Canvas，无任何依赖。
  */
 (function () {
@@ -286,24 +286,52 @@
       osc.stop(t0 + dur + 0.02);
     },
 
+    // 音高从 f0 快速滑到 f1 —— 「泡泡破掉」那种"啵"就是靠这个上滑做出来的
+    sweep(f0, f1, dur, type, vol, delay) {
+      if (!this.on) return;
+      const ac = this.ensure();
+      if (!ac) return;
+      const t0 = ac.currentTime + (delay || 0);
+      const osc = ac.createOscillator();
+      const g = ac.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(f0, t0);
+      osc.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(vol == null ? 0.14 : vol, t0 + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(g).connect(ac.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    },
+
+    // 投放：短促清脆的"嗒"。原来是 220Hz 三角波，听着又低又闷，
+    // 现在改成高频正弦 + 轻微上滑，亮很多。
     drop() {
-      this.tone(220, 0.09, 'triangle', 0.10);
+      this.sweep(700, 1080, 0.058, 'sine', 0.07);
     },
 
-    // 合并音随等级升调
+    // 合并：泡泡破掉的"啵"。做法是短促的快速上滑 + 一层更高的水花点缀。
+    // 等级越高音越清亮。
     merge(level) {
-      const f = 300 * Math.pow(1.085, level);
-      this.tone(f, 0.16, 'sine', 0.15);
-      this.tone(f * 1.5, 0.12, 'sine', 0.07, 0.03);
+      if (!this.on) return;
+      const ac = this.ensure();
+      if (!ac) return;
+      // 道具一次会合成几十次，不限流的话几十个音叠在一起会炸成噪音
+      if (ac.currentTime - this._lastMerge < 0.04) return;
+      this._lastMerge = ac.currentTime;
+
+      const base = 520 * Math.pow(1.07, level);
+      this.sweep(base, base * 2.3, 0.085, 'sine', 0.15);
+      this.sweep(base * 2.4, base * 3.3, 0.045, 'sine', 0.05, 0.012);
     },
 
-    bump() {
-      this.tone(120, 0.06, 'sine', 0.05);
-    },
-
-    // 道具：上行琶音，有"发动"的感觉
+    // 道具：四连上行的清脆泡泡，有"发动"的感觉
     item() {
-      [392, 523, 659, 880].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.13, i * 0.06));
+      for (let i = 0; i < 4; i++) {
+        const f = 620 * Math.pow(1.17, i);
+        this.sweep(f, f * 1.9, 0.09, 'sine', 0.11, i * 0.055);
+      }
     },
 
     win() {
@@ -317,9 +345,11 @@
     toggle() {
       this.on = !this.on;
       Store.set(SOUND_KEY, this.on ? '1' : '0');
-      if (this.on) this.tone(660, 0.1, 'sine', 0.12);
+      if (this.on) this.sweep(760, 1180, 0.09, 'sine', 0.11);
       return this.on;
     },
+
+    _lastMerge: -1,
   };
 
   /* ==================== 游戏状态 ==================== */
@@ -1531,7 +1561,7 @@
   // 重来一次：消除最后两次放下的图案，本局只能用一次
   elOvRevive.addEventListener('click', () => {
     Sfx.ensure();
-    Sfx.tone(520, 0.18, 'triangle', 0.15);
+    Sfx.sweep(520, 1040, 0.22, 'sine', 0.13);
     revive();
   });
 
@@ -1648,6 +1678,8 @@
       useMergeItem, findClosestPair,
       // 结算分享图
       buildShareImage, openShare,
+      // 音效（测试用假 WebAudio 检查频率）
+      Sfx,
       setAim(x) { state.aimX = x; },
       forceLevel(l) { state.heldLevel = l; state.cooldown = 0; },
       dropNow() { drop(); },
@@ -1659,6 +1691,7 @@
 
   boot();
 })();
+
 
 
 
