@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#ffeef4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>合成大基娜</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="hud">
+    <div class="stat">
+      <span class="k">分数</span>
+      <strong id="score">0</strong>
+    </div>
+    <div class="stat next">
+      <span class="k">下一个</span>
+      <div class="nextSlot"><img id="nextImg" alt=""></div>
+    </div>
+    <div class="stat best">
+      <span class="k">最高分</span>
+      <strong id="best">0</strong>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="combo"></div>
+  </div>
+
+  <footer id="tools">
+    <button id="btnChart" type="button">合成表</button>
+    <button id="btnSound" type="button">音效开</button>
+    <button id="btnRestart" type="button">重开</button>
+  </footer>
+
+  <!-- 开始 / 胜利 / 结束 -->
+  <div id="overlay" class="show">
+    <div class="panel" id="panel">
+      <h1 id="ovTitle">合成大基娜</h1>
+      <p class="sub" id="ovSub">相同的撞在一起，越合越大</p>
+      <div class="finalScore" id="ovScoreWrap" hidden>
+        <div class="row"><span>本局得分</span><strong id="ovScore">0</strong></div>
+        <div class="row"><span>最高分</span><strong id="ovBest">0</strong></div>
+      </div>
+      <button id="ovBtn" class="primary" type="button">开始游戏</button>
+      <button id="ovRevive" class="ghost" type="button" hidden>用掉重来机会（消除最后两次）</button>
+      <p class="hint">鼠标移动瞄准、点击投放<br>触屏拖动瞄准、松手投放<br>空格投放 · R 重开</p>
+    </div>
+  </div>
+
+  <!-- 合成表 -->
+  <div id="chartModal">
+    <div class="panel wide">
+      <h2>合成表</h2>
+      <div id="chartGrid"></div>
+      <p class="hint">两个 <b>11 级</b>撞在一起即通关</p>
+      <button id="chartClose" class="primary" type="button">知道了</button>
+    </div>
+  </div>
+
+</div>
+<script src="game.js"></script>
+</body>
+</html>
