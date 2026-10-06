@@ -1,4 +1,4 @@
-/* 合成大基娜 — 玩法与物理引擎
+﻿/* 合成大基娜 — 玩法与物理引擎
  * 纯原生 JS + Canvas，无任何依赖。
  */
 (function () {
@@ -32,7 +32,7 @@
   const DROP_PROFILES = {
     normal: { name: '普通', maxLevel: 5, weights: [30, 26, 20, 14, 10], winLevel: 11, items: 0 },
     // 口令模式：通关线不变，每局给 3 个「同级合并」道具
-    easy: { name: '简易', maxLevel: 5, weights: [30, 26, 20, 14, 10], winLevel: 11, items: 3 },
+    easy: { name: '简易', maxLevel: 5, weights: [30, 26, 20, 14, 10], winLevel: 11, items: 5 },
   };
   const EASY_CODE = '52nana1314';
   const EASY_KEY = 'jina.easy.v1';
@@ -346,10 +346,12 @@
     winLevel: LEVELS,
     // 口令道具：剩余「同级合并」次数
     items: 0,
-    // 打击感：飘分 / 冲击波 / 震屏
+    // 打击感：飘分气泡 / 可爱粒子 / 果冻回弹
     floaters: [],
-    ripples: [],
-    shake: 0,
+    bits: [],
+    jelly: 0,
+    jellyT: 0,
+    jellyNow: 0,
     // 本局达到过的最高等级（用于结算分享图）
     maxLevel: 1,
   };
@@ -389,8 +391,10 @@
     state.winLevel = dropProfile.winLevel;
     state.items = dropProfile.items; // 每局重新补满道具
     state.floaters.length = 0;
-    state.ripples.length = 0;
-    state.shake = 0;
+    state.bits.length = 0;
+    state.jelly = 0;
+    state.jellyT = 0;
+    state.jellyNow = 0;
     state.maxLevel = 1;
     syncHud();
     syncItemBtn();
@@ -686,11 +690,10 @@
     state.score += gain;
     if (level > state.maxLevel) state.maxLevel = level;
 
-    // 打击感：飘分 + 冲击波 + 震屏 + 震动反馈
+    // 可爱风的三层反馈：飘分气泡 + 爱心星星 + 果冻回弹
     spawnFloater(x, y, gain, level);
-    spawnRipple(x, y, level);
-    addShake(1.6 + level * 0.55);
-    buzz(Math.min(40, 8 + level * 2.5));
+    spawnCuteBits(x, y, level);
+    addJelly(0.012 + level * 0.0028);
 
     spawnParticles(x, y, level);
     Sfx.merge(level);
@@ -731,37 +734,51 @@
     }
   }
 
-  /* ==================== 打击感 ==================== */
+  /* ==================== 打击感（可爱风） ==================== */
 
-  // 飘分：合成位置冒一个 +N 往上飘
+  // 飘分：合成位置冒一个 +N 的小气泡，往上飘并淡出
   function spawnFloater(x, y, gain, level) {
     state.floaters.push({
       x,
       y,
       text: '+' + gain,
       life: 1,
-      vy: -52 - level * 2,
-      size: 22 + Math.min(level, 10) * 1.6,
-      color: level >= 9 ? '#e8a317' : '#2f9e6b',
+      vy: -46 - level * 1.6,
+      size: 20 + Math.min(level, 10) * 1.4,
+      color: level >= 9 ? '#e0a020' : '#e87ba6',
     });
   }
 
-  // 冲击波：合成点扩散一圈，等级越高越明显
-  function spawnRipple(x, y, level) {
-    state.ripples.push({
-      x, y,
-      r: RADII[Math.min(level - 1, LEVELS - 1)] * 0.6,
-      grow: 90 + level * 16,
-      life: 1,
-      decay: 2.6,
-      w: 2 + level * 0.35,
-      color: RING[Math.min(level - 1, LEVELS - 1)],
-    });
+  // 可爱粒子：爱心 / 星星 / 闪光，从合成点轻轻飘起来
+  const BIT_TYPES = ['heart', 'star', 'sparkle'];
+  const BIT_COLORS = ['#FF9EC4', '#FFC7DE', '#FFE08A', '#B8ECD4', '#B4E0F7', '#FFB3C8', '#E0C6F5'];
+
+  function spawnCuteBits(x, y, level) {
+    const n = 4 + Math.min(level, 6);
+    for (let i = 0; i < n; i++) {
+      const a = rand(-Math.PI * 0.88, -Math.PI * 0.12); // 主要朝上飘
+      const sp = rand(70, 155) + level * 8;
+      state.bits.push({
+        x: x + rand(-8, 8),
+        y: y + rand(-8, 8),
+        vx: Math.cos(a) * sp * 0.65,
+        vy: Math.sin(a) * sp,
+        life: 1,
+        decay: rand(0.85, 1.35),
+        size: rand(6.5, 11) + level * 0.35,
+        type: BIT_TYPES[(Math.random() * BIT_TYPES.length) | 0],
+        color: BIT_COLORS[(Math.random() * BIT_COLORS.length) | 0],
+        rot: rand(-0.5, 0.5),
+        rotV: rand(-2.4, 2.4),
+      });
+    }
   }
 
-  // 震屏：合出高级球时抖一下
-  function addShake(power) {
-    state.shake = Math.min(14, state.shake + power);
+  // 果冻抖动：整块场地柔和地挤一下再弹回来。
+  // 这是替代"震屏"的可爱版本 —— 不是随机抖动，是一次衰减余弦（像果冻回弹）。
+  function addJelly(power) {
+    state.jelly = Math.min(0.075, state.jelly + power);
+    state.jellyT = 0;
   }
 
   function stepEffects(dt) {
@@ -770,27 +787,33 @@
       const f = fs[i];
       f.y += f.vy * dt;
       f.vy *= 0.94;
-      f.life -= dt / 0.95;
+      f.life -= dt / 1.05;
       if (f.life <= 0) fs.splice(i, 1);
     }
-    const rs = state.ripples;
-    for (let i = rs.length - 1; i >= 0; i--) {
-      const r = rs[i];
-      r.r += r.grow * dt;
-      r.life -= r.decay * dt;
-      if (r.life <= 0) rs.splice(i, 1);
-    }
-    // 震屏衰减
-    if (state.shake > 0.05) state.shake *= Math.exp(-9 * dt);
-    else state.shake = 0;
-  }
 
-  // 手机震动反馈（安卓支持，iOS 不支持，加了不亏）
-  function buzz(ms) {
-    try {
-      if (navigator.vibrate) navigator.vibrate(ms);
-    } catch (e) {
-      /* 忽略 */
+    const bs = state.bits;
+    for (let i = bs.length - 1; i >= 0; i--) {
+      const b = bs[i];
+      b.vy += 300 * dt; // 轻微重力：先飘上去再缓缓落下，像彩纸
+      b.vx *= 0.97;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.rot += b.rotV * dt;
+      b.life -= b.decay * dt;
+      if (b.life <= 0) bs.splice(i, 1);
+    }
+
+    // 果冻回弹
+    if (state.jelly > 0.0006) {
+      state.jellyT += dt;
+      const env = Math.exp(-5.5 * state.jellyT);
+      state.jellyNow = state.jelly * env * Math.cos(state.jellyT * 22);
+      if (env < 0.02) {
+        state.jelly = 0;
+        state.jellyNow = 0;
+      }
+    } else {
+      state.jellyNow = 0;
     }
   }
 
@@ -1049,9 +1072,12 @@
     ctx.translate(ox, oy);
     ctx.scale(scale, scale);
 
-    // 震屏：整体抖一下，幅度由 state.shake 控制并逐帧衰减
-    if (state.shake > 0.05) {
-      ctx.translate(rand(-state.shake, state.shake), rand(-state.shake, state.shake));
+    // 果冻回弹：以底边中心为锚点整体轻轻挤一下（横向缩、纵向拉）
+    if (state.jellyNow) {
+      const j = state.jellyNow;
+      ctx.translate(FIELD_W / 2, FIELD_H);
+      ctx.scale(1 - j * 0.5, 1 + j);
+      ctx.translate(-FIELD_W / 2, -FIELD_H);
     }
 
     drawField();
@@ -1060,8 +1086,8 @@
     for (let i = 0; i < state.balls.length; i++) drawBall(state.balls[i]);
 
     drawHeld();
-    drawRipples();
     drawParticles();
+    drawBits();
     drawFloaters();
 
     ctx.restore();
@@ -1197,23 +1223,57 @@
     ctx.restore();
   }
 
-  // 冲击波：合成点扩散的圆环
-  function drawRipples() {
-    const rs = state.ripples;
-    for (let i = 0; i < rs.length; i++) {
-      const r = rs[i];
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, r.life) * 0.75;
-      ctx.strokeStyle = r.color;
-      ctx.lineWidth = r.w * r.life;
-      ctx.beginPath();
-      ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
+  // 爱心（两个圆 + 一个三角，比贝塞尔路径更稳）
+  function drawHeartShape(s) {
+    ctx.beginPath();
+    ctx.arc(-s * 0.34, -s * 0.2, s * 0.42, 0, Math.PI * 2);
+    ctx.arc(s * 0.34, -s * 0.2, s * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.74, -s * 0.04);
+    ctx.lineTo(s * 0.74, -s * 0.04);
+    ctx.lineTo(0, s * 0.86);
+    ctx.closePath();
+    ctx.fill();
   }
 
-  // 飘分：+N 往上飘并淡出
+  // 多角星（points=5 是五角星，points=4 + inner 小 就是闪光）
+  function drawStarShape(s, points, inner) {
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const rr = i % 2 === 0 ? s : s * inner;
+      const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+      const px = Math.cos(a) * rr;
+      const py = Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // 可爱粒子：爱心 / 星星 / 闪光
+  function drawBits() {
+    const bs = state.bits;
+    if (!bs.length) return;
+    ctx.save();
+    for (let i = 0; i < bs.length; i++) {
+      const b = bs[i];
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 1.6));
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.rot);
+      ctx.fillStyle = b.color;
+      if (b.type === 'heart') drawHeartShape(b.size);
+      else if (b.type === 'star') drawStarShape(b.size, 5, 0.45);
+      else drawStarShape(b.size, 4, 0.3);
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // 飘分：圆角小气泡 + 数字，带一个弹入的缩放
   function drawFloaters() {
     const fs = state.floaters;
     if (!fs.length) return;
@@ -1223,15 +1283,30 @@
     ctx.lineJoin = 'round';
     for (let i = 0; i < fs.length; i++) {
       const f = fs[i];
-      const a = Math.min(1, f.life * 1.8); // 最后阶段才淡出
-      ctx.globalAlpha = a;
+      const t = 1 - f.life; // 0 -> 1
+      // 弹入：先缩小 -> 弹过一点 -> 回到 1
+      let pop;
+      if (t < 0.16) pop = 0.55 + (t / 0.16) * 0.6;
+      else if (t < 0.4) pop = 1.15 - ((t - 0.16) / 0.24) * 0.15;
+      else pop = 1;
+
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.scale(pop, pop);
+      ctx.globalAlpha = Math.min(1, f.life * 2.2);
       ctx.font = `800 ${f.size}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
-      // 先描白边再填色，叠在花花绿绿的球上也看得清
-      ctx.lineWidth = Math.max(3, f.size * 0.22);
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-      ctx.strokeText(f.text, f.x, f.y);
+      const tw = ctx.measureText(f.text).width || f.size * 1.8;
+      const h = f.size * 1.62;
+      const w = tw + f.size * 1.1;
+      roundRect(-w / 2, -h / 2, w, h, h / 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.96)';
+      ctx.fill();
+      ctx.strokeStyle = f.color;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
       ctx.fillStyle = f.color;
-      ctx.fillText(f.text, f.x, f.y);
+      ctx.fillText(f.text, 0, f.size * 0.05);
+      ctx.restore();
     }
     ctx.restore();
     ctx.globalAlpha = 1;
@@ -1501,7 +1576,7 @@
       setEasyMode(on);
       elCodeMsg.className = 'hint ok';
       elCodeMsg.textContent = on
-        ? `已开启口令模式：每局 3 个「同级全合」道具，右下角按钮使用`
+        ? `已开启口令模式：每局 5 个「同级全合」道具，右下角按钮使用`
         : '已关闭口令模式';
       elCodeInput.value = '';
       updateWinHint();
@@ -1584,6 +1659,7 @@
 
   boot();
 })();
+
 
 
 
