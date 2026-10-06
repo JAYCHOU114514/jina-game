@@ -1661,6 +1661,23 @@
     });
 
     document.getElementById('ovBtn').textContent = '开始游戏';
+    registerSW();
+  }
+
+  /* ==================== PWA ==================== */
+
+  // 注册 Service Worker：装完之后离线也能玩、手机上可「添加到主屏幕」。
+  // 注意：SW 只在 https 或 localhost 下可用，file:// 打开会跳过（单文件版也不需要它）。
+  function registerSW() {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+      if (typeof location === 'undefined' || !/^https?:$/.test(location.protocol)) return;
+      navigator.serviceWorker.register('sw.js').catch(() => {
+        /* 注册失败不影响游戏 */
+      });
+    } catch (e) {
+      /* 忽略 */
+    }
   }
 
   /* ==================== 无头测试钩子 ==================== */
@@ -1680,6 +1697,8 @@
       buildShareImage, openShare,
       // 音效（测试用假 WebAudio 检查频率）
       Sfx,
+      // PWA
+      registerSW,
       setAim(x) { state.aimX = x; },
       forceLevel(l) { state.heldLevel = l; state.cooldown = 0; },
       dropNow() { drop(); },
