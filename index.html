@@ -58,8 +58,14 @@
     <div class="panel wide">
       <h2>合成表</h2>
       <div id="chartGrid"></div>
-      <p class="hint">两个 <b>11 级</b>撞在一起即通关</p>
+      <p class="hint" id="winHint">两个最高级撞在一起即通关</p>
       <button id="chartClose" class="primary" type="button">知道了</button>
+      <div class="codeRow">
+        <input id="codeInput" type="text" autocomplete="off" autocapitalize="off"
+               autocorrect="off" spellcheck="false" placeholder="口令">
+        <button id="codeBtn" type="button">确定</button>
+      </div>
+      <p class="hint" id="codeMsg"></p>
     </div>
   </div>
 

@@ -1,4 +1,4 @@
-﻿/* 合成大基娜 — 玩法与物理引擎
+/* 合成大基娜 — 玩法与物理引擎
  * 纯原生 JS + Canvas，无任何依赖。
  */
 (function () {
@@ -25,10 +25,17 @@
   // 判定线：到顶格的高度 = 2 级图片的高度（2 × 30 = 60）。
   // 原来放在 118，头顶上方空出一大片，越过线也迟迟没有反馈。
   const DEATH_Y = 60;
-  // 待投放物件的中心 y，必须在判定线之上（2 级半径 30，最高可投 5 级半径 50）
+  // 待投放物件的中心 y，必须在判定线之上
   const DROP_Y = 6;
-  const DROP_MAX_LEVEL = 5;     // 只有前 5 级可被投放
-  const DROP_WEIGHTS = [30, 26, 20, 14, 10];
+  // 投放配置。口令正确时切到 easy 档。
+  // weights 第 i 项 = 投放第 i+1 级的相对权重，数组长度就是「可投放的最高级」。
+  const DROP_PROFILES = {
+    normal: { name: '普通', maxLevel: 5, weights: [30, 26, 20, 14, 10], winLevel: 11 },
+    easy: { name: '简易', maxLevel: 5, weights: [30, 26, 20, 14, 10], winLevel: 9 },
+  };
+  const EASY_CODE = '52nana1314';
+  const EASY_KEY = 'jina.easy.v1';
+  let dropProfile = DROP_PROFILES.normal;
   const DROP_COOLDOWN = 0.40;   // 秒
   const OVER_DELAY = 1.1;       // 越线持续多久判负
   const CHAIN_WINDOW = 0.9;     // 连击窗口
@@ -116,14 +123,34 @@
   const scoreForLevel = (n) => (n * (n - 1)) / 2;
 
   function pickDropLevel() {
+    const w = dropProfile.weights;
     let total = 0;
-    for (let i = 0; i < DROP_MAX_LEVEL; i++) total += DROP_WEIGHTS[i];
+    for (let i = 0; i < w.length; i++) total += w[i];
     let r = Math.random() * total;
-    for (let i = 0; i < DROP_MAX_LEVEL; i++) {
-      r -= DROP_WEIGHTS[i];
+    for (let i = 0; i < w.length; i++) {
+      r -= w[i];
       if (r <= 0) return i + 1;
     }
     return 1;
+  }
+
+  // 口令模式开关。返回切换后的状态。
+  function setEasyMode(on) {
+    dropProfile = on ? DROP_PROFILES.easy : DROP_PROFILES.normal;
+    state.winLevel = dropProfile.winLevel;
+    try {
+      localStorage.setItem(EASY_KEY, on ? '1' : '0');
+    } catch (e) {
+      /* 无存档也能用 */
+    }
+    document.getElementById('app').classList.toggle('easy', on);
+    // 通关线变了，合成表下次打开时重建
+    elChartGrid.innerHTML = '';
+    return on;
+  }
+
+  function isEasyMode() {
+    return dropProfile === DROP_PROFILES.easy;
   }
 
   /* ==================== 精灵图 ==================== */
@@ -232,6 +259,8 @@
     // 「重来一次」用：每次投放前记录一份棋盘快照，回退两步即可消除最后两次放下的图案
     history: [],
     reviveUsed: false,
+    // 通关线：两个该等级的球相撞即通关。简易模式会调低。
+    winLevel: LEVELS,
   };
 
   function makeBall(level, x, y) {
@@ -266,6 +295,7 @@
     state.winAt = 0;
     state.history.length = 0;
     state.reviveUsed = false;
+    state.winLevel = dropProfile.winLevel;
     syncHud();
   }
 
@@ -516,8 +546,8 @@
         // 若要求「明显重叠」才合并，会出现两个同级球贴在一起却永远不合成的情况。
         if (Math.hypot(dx, dy) > a.r + b.r + 0.5) continue;
 
-        // 两个最高级相撞 → 通关
-        if (a.level >= LEVELS) {
+        // 两个最高级相撞 → 通关（简易模式通关线会调低）
+        if (a.level >= state.winLevel) {
           victory(a.x, a.y, b.x, b.y);
           return true;
         }
@@ -933,6 +963,10 @@
   const elCombo = document.getElementById('combo');
   const elChart = document.getElementById('chartModal');
   const elChartGrid = document.getElementById('chartGrid');
+  const elCodeInput = document.getElementById('codeInput');
+  const elCodeBtn = document.getElementById('codeBtn');
+  const elCodeMsg = document.getElementById('codeMsg');
+  const elWinHint = document.getElementById('winHint');
   const elOvRevive = document.getElementById('ovRevive');
   const btnSound = document.getElementById('btnSound');
 
@@ -955,7 +989,7 @@
   function showOverlay(title, btnText, withScore, isWin, canRevive) {
     elOvTitle.textContent = title;
     elOvSub.textContent = isWin
-      ? `两个 ${LEVELS} 级撞在一起了！`
+      ? `两个 ${state.winLevel} 级撞在一起了！`
       : withScore
         ? '别灰心，再来一次'
         : '相同的撞在一起，越合越大';
@@ -974,7 +1008,7 @@
   function buildChart() {
     if (elChartGrid.childElementCount) return;
     let html = '';
-    for (let i = 1; i <= LEVELS; i++) {
+    for (let i = 1; i <= state.winLevel; i++) {
       const pts = i >= 2 ? `<div class="pt">${scoreForLevel(i)} 分</div>` : `<div class="pt">&nbsp;</div>`;
       html +=
         `<div class="chartItem${i === LEVELS ? ' top' : ''}">` +
@@ -1065,7 +1099,42 @@
 
   document.getElementById('btnChart').addEventListener('click', () => {
     buildChart();
+    updateWinHint();
     elChart.classList.add('show');
+  });
+
+  /* ---------- 口令 ---------- */
+  function updateWinHint() {
+    elWinHint.innerHTML =
+      `两个 <b>${state.winLevel} 级</b>撞在一起即通关` +
+      (isEasyMode() ? `　已开启简易模式` : '');
+  }
+
+  function submitCode() {
+    const v = (elCodeInput.value || '').trim().toLowerCase();
+    if (!v) return;
+    if (v === EASY_CODE) {
+      // 再输一次可以关掉
+      const on = !isEasyMode();
+      setEasyMode(on);
+      elCodeMsg.className = 'hint ok';
+      elCodeMsg.textContent = on
+        ? `已开启简易模式：通关线降到 ${DROP_PROFILES.easy.winLevel} 级`
+        : '已关闭简易模式';
+      elCodeInput.value = '';
+      updateWinHint();
+    } else {
+      elCodeMsg.className = 'hint err';
+      elCodeMsg.textContent = '口令不对';
+    }
+  }
+
+  elCodeBtn.addEventListener('click', submitCode);
+  elCodeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      submitCode();
+      e.preventDefault();
+    }
   });
 
   document.getElementById('chartClose').addEventListener('click', () => elChart.classList.remove('show'));
@@ -1085,6 +1154,14 @@
     resize();
     btnSound.textContent = Sfx.on ? '音效开' : '音效关';
     btnSound.classList.toggle('off', !Sfx.on);
+
+    // 恢复上次的口令模式
+    if (Store.get(EASY_KEY) === '1') {
+      dropProfile = DROP_PROFILES.easy;
+      state.winLevel = dropProfile.winLevel;
+      document.getElementById('app').classList.add('easy');
+    }
+    updateWinHint();
 
     loadSprites().then(() => {
       syncHud();
@@ -1106,6 +1183,8 @@
       resetGame, makeBall, physicsStep, resolveMerges, predictLanding, scoreForLevel, checkOverflow,
       // 渲染与主循环逻辑也要能被测到（否则绘制代码和循环逻辑写错测试发现不了）
       render, resize, drop, update, revive, pushHistory,
+      // 口令模式
+      setEasyMode, isEasyMode, EASY_CODE, getProfile: () => dropProfile, DROP_PROFILES, pickDropLevel,
       setAim(x) { state.aimX = x; },
       forceLevel(l) { state.heldLevel = l; state.cooldown = 0; },
       dropNow() { drop(); },
@@ -1117,5 +1196,6 @@
 
   boot();
 })();
+
 
 
