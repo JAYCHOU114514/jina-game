@@ -30,8 +30,9 @@
   // 投放配置。口令正确时切到 easy 档。
   // weights 第 i 项 = 投放第 i+1 级的相对权重，数组长度就是「可投放的最高级」。
   const DROP_PROFILES = {
-    normal: { name: '普通', maxLevel: 5, weights: [30, 26, 20, 14, 10], winLevel: 11 },
-    easy: { name: '简易', maxLevel: 5, weights: [30, 26, 20, 14, 10], winLevel: 9 },
+    normal: { name: '普通', maxLevel: 5, weights: [30, 26, 20, 14, 10], winLevel: 11, items: 0 },
+    // 口令模式：通关线不变，每局给 3 个「同级合并」道具
+    easy: { name: '简易', maxLevel: 5, weights: [30, 26, 20, 14, 10], winLevel: 11, items: 3 },
   };
   const EASY_CODE = '52nana1314';
   const EASY_KEY = 'jina.easy.v1';
@@ -138,19 +139,96 @@
   function setEasyMode(on) {
     dropProfile = on ? DROP_PROFILES.easy : DROP_PROFILES.normal;
     state.winLevel = dropProfile.winLevel;
+    state.items = dropProfile.items; // 开启时立刻补满道具
     try {
       localStorage.setItem(EASY_KEY, on ? '1' : '0');
     } catch (e) {
       /* 无存档也能用 */
     }
     document.getElementById('app').classList.toggle('easy', on);
-    // 通关线变了，合成表下次打开时重建
-    elChartGrid.innerHTML = '';
+    elChartGrid.innerHTML = ''; // 合成表下次打开时重建
+    syncItemBtn();
     return on;
   }
 
   function isEasyMode() {
     return dropProfile === DROP_PROFILES.easy;
+  }
+
+  /* ==================== 口令道具：同级合并 ==================== */
+
+  // 找出场上距离最近的一对同级球（就近配对，避免球被"瞬移"太远）
+  function findClosestPair() {
+    const bs = state.balls;
+    let best = null;
+    let bestD = Infinity;
+    for (let i = 0; i < bs.length; i++) {
+      for (let j = i + 1; j < bs.length; j++) {
+        if (bs[i].level !== bs[j].level) continue;
+        const d = Math.hypot(bs[j].x - bs[i].x, bs[j].y - bs[i].y);
+        if (d < bestD) {
+          bestD = d;
+          best = [bs[i], bs[j]];
+        }
+      }
+    }
+    return best;
+  }
+
+  // 用掉一个道具：场上所有同级球两两合并，并且链式进行
+  // （4 个 3 级 -> 2 个 4 级 -> 1 个 5 级）。返回 true 表示触发了通关。
+  function useMergeItem() {
+    if (state.phase !== 'play' || state.items <= 0) return false;
+
+    const before = state.balls.length;
+    let merged = 0;
+    let guard = 0;
+
+    while (guard++ < 300) {
+      const pair = findClosestPair();
+      if (!pair) break;
+      const a = pair[0];
+      const b = pair[1];
+
+      // 两个最高级凑齐了 → 直接通关（和正常规则一致）
+      if (a.level >= state.winLevel) {
+        state.items--;
+        syncItemBtn();
+        victory(a.x, a.y, b.x, b.y);
+        return true;
+      }
+
+      const nl = a.level + 1;
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const nb = makeBall(nl, mx, my);
+      nb.pop = 1;
+      nb.landed = true;
+      nb.touched = true;
+      nb.vx = (a.vx + b.vx) * 0.3;
+      nb.vy = (a.vy + b.vy) * 0.3;
+
+      a.merged = true;
+      b.merged = true;
+      state.balls = state.balls.filter((x) => x !== a && x !== b);
+      state.balls.push(nb);
+
+      onMerge(nl, mx, my);
+      merged++;
+    }
+
+    state.items--;
+    syncItemBtn();
+    Sfx.item();
+
+    if (merged > 0) {
+      // 全屏撒一把粒子，让"一次全合"有反馈
+      for (let k = 0; k < 5; k++) {
+        spawnParticles(rand(60, FIELD_W - 60), rand(FIELD_H * 0.35, FIELD_H - 60), 3 + (k % 4));
+      }
+    }
+    console.log(`[道具] 场上 ${before} 个 -> ${state.balls.length} 个，共合成 ${merged} 次，剩余 ${state.items}`);
+    return false;
   }
 
   /* ==================== 精灵图 ==================== */
@@ -223,6 +301,11 @@
       this.tone(120, 0.06, 'sine', 0.05);
     },
 
+    // 道具：上行琶音，有"发动"的感觉
+    item() {
+      [392, 523, 659, 880].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.13, i * 0.06));
+    },
+
     win() {
       [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, 0.36, 'triangle', 0.16, i * 0.12));
     },
@@ -259,8 +342,10 @@
     // 「重来一次」用：每次投放前记录一份棋盘快照，回退两步即可消除最后两次放下的图案
     history: [],
     reviveUsed: false,
-    // 通关线：两个该等级的球相撞即通关。简易模式会调低。
+    // 通关线：两个该等级的球相撞即通关。目前普通/口令模式都是 11 级。
     winLevel: LEVELS,
+    // 口令道具：剩余「同级合并」次数
+    items: 0,
   };
 
   function makeBall(level, x, y) {
@@ -296,7 +381,9 @@
     state.history.length = 0;
     state.reviveUsed = false;
     state.winLevel = dropProfile.winLevel;
+    state.items = dropProfile.items; // 每局重新补满道具
     syncHud();
+    syncItemBtn();
   }
 
   // 投放前记录棋盘快照（浅拷贝足够，球的字段都是基本类型）
@@ -583,7 +670,9 @@
     state.chainTimer = CHAIN_WINDOW;
 
     const base = scoreForLevel(level);
-    const gain = Math.round(base * (1 + (state.chain - 1) * 0.5));
+    // 连击加成封顶 3 倍。道具一次触发几十次合成，不封顶会瞬间刷出天价分数。
+    const mult = 1 + Math.min(state.chain - 1, 4) * 0.5;
+    const gain = Math.round(base * mult);
     state.score += gain;
 
     spawnParticles(x, y, level);
@@ -967,6 +1056,18 @@
   const elCodeBtn = document.getElementById('codeBtn');
   const elCodeMsg = document.getElementById('codeMsg');
   const elWinHint = document.getElementById('winHint');
+  const elItemBtn = document.getElementById('itemBtn');
+  const elItemCount = document.getElementById('itemCount');
+
+  // 道具按钮：只在口令模式下显示，用完变灰
+  function syncItemBtn() {
+    if (!elItemBtn) return;
+    const on = isEasyMode();
+    elItemBtn.hidden = !on;
+    if (!on) return;
+    elItemCount.textContent = state.items;
+    elItemBtn.classList.toggle('empty', state.items <= 0);
+  }
   const elOvRevive = document.getElementById('ovRevive');
   const btnSound = document.getElementById('btnSound');
 
@@ -1095,6 +1196,13 @@
     revive();
   });
 
+  // 口令道具：同级全合
+  elItemBtn.addEventListener('click', () => {
+    Sfx.ensure();
+    if (state.items <= 0) return;
+    useMergeItem();
+  });
+
   document.getElementById('btnRestart').addEventListener('click', restart);
 
   document.getElementById('btnChart').addEventListener('click', () => {
@@ -1119,8 +1227,8 @@
       setEasyMode(on);
       elCodeMsg.className = 'hint ok';
       elCodeMsg.textContent = on
-        ? `已开启简易模式：通关线降到 ${DROP_PROFILES.easy.winLevel} 级`
-        : '已关闭简易模式';
+        ? `已开启口令模式：每局 3 个「同级全合」道具，右下角按钮使用`
+        : '已关闭口令模式';
       elCodeInput.value = '';
       updateWinHint();
     } else {
@@ -1159,9 +1267,11 @@
     if (Store.get(EASY_KEY) === '1') {
       dropProfile = DROP_PROFILES.easy;
       state.winLevel = dropProfile.winLevel;
+      state.items = dropProfile.items;
       document.getElementById('app').classList.add('easy');
     }
     updateWinHint();
+    syncItemBtn();
 
     loadSprites().then(() => {
       syncHud();
@@ -1185,6 +1295,8 @@
       render, resize, drop, update, revive, pushHistory,
       // 口令模式
       setEasyMode, isEasyMode, EASY_CODE, getProfile: () => dropProfile, DROP_PROFILES, pickDropLevel,
+      // 口令道具
+      useMergeItem, findClosestPair,
       setAim(x) { state.aimX = x; },
       forceLevel(l) { state.heldLevel = l; state.cooldown = 0; },
       dropNow() { drop(); },

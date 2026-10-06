@@ -124,6 +124,51 @@ html, body {
 
 #combo.pop { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 
+/* ---------- 口令道具按钮 ---------- */
+#itemBtn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 999px;
+  padding: 9px 15px;
+  font-size: 13px;
+  font-weight: 800;
+  font-family: inherit;
+  color: #7a4a00;
+  background: linear-gradient(180deg, #ffe9a8, #ffcf5c);
+  box-shadow: 0 3px 0 #d9a52c, 0 8px 18px rgba(180, 130, 20, 0.34);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.15s ease;
+}
+
+#itemBtn .ico { font-size: 15px; line-height: 1; }
+
+#itemBtn b {
+  font-size: 15px;
+  color: #b8791a;
+  font-variant-numeric: tabular-nums;
+}
+
+#itemBtn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #d9a52c, 0 4px 10px rgba(180, 130, 20, 0.3);
+}
+
+#itemBtn[hidden] { display: none; }
+
+#itemBtn.empty {
+  opacity: 0.45;
+  color: #8b8172;
+  background: linear-gradient(180deg, #ececec, #d8d8d8);
+  box-shadow: 0 3px 0 #b5b5b5;
+  cursor: default;
+}
+
 /* ---------- 底部按钮 ---------- */
 #tools {
   flex: 0 0 auto;
@@ -354,7 +399,7 @@ button.ghost[hidden] { display: none; }
 
 /* 简易模式标记：贴在场地左上角 */
 #app.easy #stage::after {
-  content: '简易模式';
+  content: '口令模式';
   position: absolute;
   left: 8px;
   top: 8px;
